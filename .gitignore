@@ -1,0 +1,39 @@
+# Python cache and compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Environment and IDE files
+.env
+*.env
+*.vscode/
+*.idea/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# CSV and JSON data files
+# *.csv
+*.json
+venv
+
+# Chromedriver binaries and logs
+# chromedriver-win64/
+
+# Log files
+*.log
+
+# Ignore storage folder if you don't want to track data
+# storage/
+
+# Ignore main output
+main.pyc
+
+# Ignore test and temp files
+*.tmp
+*.bak
