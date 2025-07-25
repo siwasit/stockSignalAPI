@@ -3,6 +3,7 @@ import pandas as pd
 import json
 import asyncio
 import logging
+import csv
 from concurrent.futures import ThreadPoolExecutor, as_completed
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -10,12 +11,21 @@ logger = logging.getLogger(__name__)
 def get_historical_data(symbol):
     tv = TvDatafeed()
 
-    bars_count = 1000  # approx 1 year daily bars
+    matched_row = None
 
+    with open('StockData.csv', newline='', encoding='utf-8') as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            if row['symbol'].endswith(symbol):
+                matched_row = row
+                break
+    bars_count = 1000  # approx 1 year daily bars
+    # print(matched_row['symbol'])
+    exchange, stock_symbol = matched_row['symbol'].split(':', 1)
     # Fetch historical data: daily bars, for about 1 year
     historical_data = tv.get_hist(
-        symbol=symbol,
-        exchange='SET',
+        symbol=stock_symbol,
+        exchange=exchange,
         interval=Interval.in_4_hour,
         n_bars=bars_count
     )
@@ -27,20 +37,23 @@ def get_historical_data(symbol):
     json_data = historical_data.reset_index().to_dict(orient='records')
     return json_data
 
-tv = TvDatafeed()
+TV_USER = "siwasit2546"
+TV_PASS = "fightfortriam1#"
+tv = TvDatafeed(username=TV_USER, password=TV_PASS)
 
 def fetch_one_stock(row):
-    symbol = row['symbol']
+    full_symbol = row['symbol']
     thai_name = row['ThaiCompanyName']
     eng_name = row['EngCompanyName']
     logo = row['logo']
 
-    logger.info(f"🔄 กำลังดึงข้อมูล: {symbol} ({eng_name})")
+    logger.info(f"🔄 กำลังดึงข้อมูล: {full_symbol} ({eng_name})")
 
     try:
+        exchange, symbol = full_symbol.split(':', 1)
         historical_data = tv.get_hist(
             symbol=symbol,
-            exchange='SET',
+            exchange=exchange,
             interval=Interval.in_4_hour,
             n_bars=2
         )
@@ -49,6 +62,7 @@ def fetch_one_stock(row):
             logger.warning(f"⚠️ {symbol} ไม่มีข้อมูลเพียงพอ")
             return {
                 "stockSymbol": symbol,
+                "stockMarket": exchange,
                 "ThaiCompanyName": thai_name,
                 "EngCompanyName": eng_name,
                 "logo": logo,
@@ -63,6 +77,7 @@ def fetch_one_stock(row):
 
         return {
             "stockSymbol": symbol,
+            "stockMarket": exchange,
             "ThaiCompanyName": thai_name,
             "companyName": eng_name,
             "logo": logo,
@@ -74,6 +89,7 @@ def fetch_one_stock(row):
         logger.error(f"❌ {symbol} เกิดข้อผิดพลาด: {e}")
         return {
             "stockSymbol": symbol,
+            "stockMarket": exchange,
             "ThaiCompanyName": thai_name,
             "EngCompanyName": eng_name,
             "logo": logo,
@@ -81,7 +97,7 @@ def fetch_one_stock(row):
         }
 
 def get_stock_price(symbol_list):
-    df = pd.read_csv("ThaiCompanyData.csv")
+    df = pd.read_csv("StockData.csv")
 
     # กรอง dataframe ให้เหลือแค่ symbol ที่ต้องการ
     df_filtered = df[df['symbol'].str.upper().isin([s.upper() for s in symbol_list])]
@@ -92,9 +108,9 @@ def get_stock_price(symbol_list):
 
     result = []
 
-    logger.info(f"เริ่มดึงข้อมูล {len(df_filtered)} ตัวที่ระบุเข้ามา ด้วย ThreadPoolExecutor max_workers=3")
+    logger.info(f"เริ่มดึงข้อมูล {len(df_filtered)} ตัวที่ระบุเข้ามา ด้วย ThreadPoolExecutor max_workers=5")
 
-    with ThreadPoolExecutor(max_workers=3) as executor:
+    with ThreadPoolExecutor(max_workers=5) as executor:
         futures = {executor.submit(fetch_one_stock, row): row['symbol'] for _, row in df_filtered.iterrows()}
 
         for future in as_completed(futures):
@@ -109,7 +125,7 @@ async def async_fetch_one_stock(row):
     return await loop.run_in_executor(None, fetch_one_stock, row)
 
 async def event_generator(symbol_list):
-    df = pd.read_csv("ThaiCompanyData.csv")
+    df = pd.read_csv("StockData.csv")
     df_filtered = df[df['symbol'].str.upper().isin([s.upper() for s in symbol_list])]
 
     if df_filtered.empty:
@@ -136,7 +152,7 @@ async def event_generator(symbol_list):
 def get_cron_stock_price(symbol_list, max_retries=1000):
     import time
 
-    df = pd.read_csv("ThaiCompanyData.csv")
+    df = pd.read_csv("StockData.csv")
     df_filtered = df[df['symbol'].str.upper().isin([s.upper() for s in symbol_list])]
 
     if df_filtered.empty:
@@ -146,7 +162,7 @@ def get_cron_stock_price(symbol_list, max_retries=1000):
     result = []
     failed_symbols = []
 
-    logger.info(f"เริ่มดึงข้อมูล {len(df_filtered)} ตัวที่ระบุเข้ามา ด้วย ThreadPoolExecutor max_workers=3")
+    logger.info(f"เริ่มดึงข้อมูล {len(df_filtered)} ตัวที่ระบุเข้ามา ด้วย ThreadPoolExecutor max_workers=5")
 
     for attempt in range(1, max_retries + 1):
         current_result = []
@@ -154,7 +170,7 @@ def get_cron_stock_price(symbol_list, max_retries=1000):
 
         logger.info(f"📦 เริ่มรอบดึงข้อมูล Attempt #{attempt}")
 
-        with ThreadPoolExecutor(max_workers=3) as executor:
+        with ThreadPoolExecutor(max_workers=5) as executor:
             futures = {
                 executor.submit(fetch_one_stock, row): row['symbol']
                 for _, row in df_filtered.iterrows()

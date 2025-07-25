@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.responses import StreamingResponse, JSONResponse
 import pandas as pd
-from Scraper.StockFundamental import scrape_stock_data 
+from Scraper.StockFundamental import scrape_stock_data, trading_view_stock_data
 from Scraper.HistoricalData import get_historical_data, get_stock_price, event_generator, get_cron_stock_price
 import logging
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -33,7 +33,7 @@ app.add_middleware(
 )
 
 # โหลดข้อมูล CSV ตอนเริ่มเซิร์ฟเวอร์
-df = pd.read_csv("ThaiCompanyData.csv")
+# df = pd.read_csv("StockData.csv")
 
 # ตั้งค่า logger
 logger = logging.getLogger("uvicorn.error")
@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 
 def load_symbols_from_csv():
     symbols = []
-    csv_file = "ThaiCompanyData.csv"
+    csv_file = "StockData.csv"
     with open(csv_file, mode="r", encoding="utf-8") as file:
         reader = csv.DictReader(file)
         symbols = [row["symbol"] for row in reader if row.get("symbol")]
@@ -69,7 +69,7 @@ def fetch_stock_data_routine():
             logger.warning("No stock data fetched.")
             return
 
-        filename = 'ThaiStockData.json'
+        filename = 'StockData.json'
         filepath = os.path.join(STORAGE_FOLDER, filename)
 
         with open(filepath, "w", encoding="utf-8") as f:
@@ -113,6 +113,26 @@ async def get_live_stock_data(symbol: str):
         logger.error(f"Error fetching live stock data for {symbol}: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
+@app.get("/CompanyProfile/{symbol}")
+async def trading_view_scraper(symbol: str):
+    try:
+        matched_row = None
+        with open('StockData.csv', newline='', encoding='utf-8') as csvfile:
+            reader = csv.DictReader(csvfile)
+            for row in reader:
+                if row['symbol'].endswith(symbol):
+                    matched_row = row
+                    break
+        
+        stock_symbol = matched_row['symbol'].replace(':', '-')
+        data = trading_view_stock_data(stock_symbol)
+        if not data:
+            raise HTTPException(status_code=404, detail=f"No live stock data found for symbol '{symbol}'")
+        return data
+    except Exception as e:
+        logger.error(f"Error fetching live stock data for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
 @app.get("/getHistData/{symbol}")
 async def get_stock_historical_data(symbol: str):
     try:
@@ -146,7 +166,7 @@ async def get_stock_historical_data(symbol: str):
 
 @app.get("/StockData")
 async def get_all_stock_data():
-    file_path = os.path.join(STORAGE_FOLDER, 'ThaiStockData.json')
+    file_path = os.path.join(STORAGE_FOLDER, 'StockData.json')
 
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Data file not found")
