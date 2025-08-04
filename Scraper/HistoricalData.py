@@ -149,6 +149,64 @@ async def event_generator(symbol_list):
         await asyncio.sleep(15)
         yield ":\n\n"  # SSE comment keep-alive
 
+# def get_cron_stock_price(symbol_list, max_retries=1000):
+#     import time
+
+#     df = pd.read_csv("StockData.csv")
+#     df_filtered = df[df['symbol'].str.upper().isin([s.upper() for s in symbol_list])]
+
+#     if df_filtered.empty:
+#         logger.warning("⚠️ ไม่มีข้อมูลบริษัทสำหรับ symbol ที่ระบุ")
+#         return [], []
+
+#     result = []
+#     failed_symbols = []
+
+#     logger.info(f"เริ่มดึงข้อมูล {len(df_filtered)} ตัวที่ระบุเข้ามา ด้วย ThreadPoolExecutor max_workers=5")
+
+#     for attempt in range(1, max_retries + 1):
+#         current_result = []
+#         current_failed = []
+
+#         logger.info(f"📦 เริ่มรอบดึงข้อมูล Attempt #{attempt}")
+
+#         with ThreadPoolExecutor(max_workers=5) as executor:
+#             futures = {
+#                 executor.submit(fetch_one_stock, row): row['symbol']
+#                 for _, row in df_filtered.iterrows()
+#             }
+
+#             for future in as_completed(futures):
+#                 symbol = futures[future]
+#                 try:
+#                     res = future.result()
+
+#                     # ตรวจสอบว่า res มี error หรือข้อมูลไม่สมบูรณ์
+#                     if isinstance(res, dict) and res.get("error"):
+#                         logger.warning(f"❌ ข้อมูล {symbol} ไม่สมบูรณ์ (error field): {res['error']}")
+#                         current_failed.append(symbol)
+#                     else:
+#                         current_result.append(res)
+
+#                 except Exception as e:
+#                     logger.warning(f"❌ ดึงข้อมูล {symbol} ไม่สำเร็จใน Attempt #{attempt}: {e}")
+#                     current_failed.append(symbol)
+
+#         result.extend(current_result)
+#         logger.info(f"✅ Attempt #{attempt}: สำเร็จ {len(current_result)} ตัว | ล้มเหลว {len(current_failed)} ตัว")
+
+#         # ถ้าไม่มีตัวที่ล้มเหลว -> ออกจาก Loop
+#         if not current_failed:
+#             break
+
+#         # เตรียมตัววนใหม่เฉพาะตัวที่ fail
+#         df_filtered = df[df['symbol'].str.upper().isin([s.upper() for s in current_failed])]
+#         failed_symbols = current_failed
+
+#         time.sleep(1)  # Optional: พักสักเล็กน้อยก่อน Retry รอบถัดไป
+
+#     return result, failed_symbols
+
 def get_cron_stock_price(symbol_list, max_retries=1000):
     import time
 
@@ -181,29 +239,34 @@ def get_cron_stock_price(symbol_list, max_retries=1000):
                 try:
                     res = future.result()
 
-                    # ตรวจสอบว่า res มี error หรือข้อมูลไม่สมบูรณ์
+                    # ตรวจสอบผลลัพธ์
                     if isinstance(res, dict) and res.get("error"):
                         logger.warning(f"❌ ข้อมูล {symbol} ไม่สมบูรณ์ (error field): {res['error']}")
                         current_failed.append(symbol)
-                    else:
-                        current_result.append(res)
+
+                    current_result.append(res)
 
                 except Exception as e:
-                    logger.warning(f"❌ ดึงข้อมูล {symbol} ไม่สำเร็จใน Attempt #{attempt}: {e}")
+                    # ใช้ fetch_one_stock ให้ return error แทนการสร้าง dict เอง
+                    logger.warning(f"❌ Exception ที่ไม่ได้จับใน fetch_one_stock สำหรับ {symbol}: {e}")
+                    row = df[df['symbol'].str.upper() == symbol.upper()].iloc[0]
+                    res = fetch_one_stock(row)  # ให้มัน handle error เอง
+                    current_result.append(res)
                     current_failed.append(symbol)
 
+        # เก็บผลลัพธ์รอบนี้
         result.extend(current_result)
-        logger.info(f"✅ Attempt #{attempt}: สำเร็จ {len(current_result)} ตัว | ล้มเหลว {len(current_failed)} ตัว")
+        logger.info(f"✅ Attempt #{attempt}: สำเร็จ {len(current_result) - len(current_failed)} ตัว | ล้มเหลว {len(current_failed)} ตัว")
 
-        # ถ้าไม่มีตัวที่ล้มเหลว -> ออกจาก Loop
-        if not current_failed:
+        # รอบสุดท้ายหรือไม่มีตัวล้มเหลว -> หยุด loop
+        if not current_failed or attempt == max_retries:
+            failed_symbols = current_failed
             break
 
-        # เตรียมตัววนใหม่เฉพาะตัวที่ fail
+        # เตรียมข้อมูลสำหรับ retry เฉพาะตัวที่ fail
         df_filtered = df[df['symbol'].str.upper().isin([s.upper() for s in current_failed])]
-        failed_symbols = current_failed
 
-        time.sleep(1)  # Optional: พักสักเล็กน้อยก่อน Retry รอบถัดไป
+        time.sleep(1)  # พักก่อน retry
 
     return result, failed_symbols
 

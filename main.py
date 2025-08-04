@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse, JSONResponse
 import pandas as pd
 from Scraper.StockFundamental import scrape_stock_data, trading_view_stock_data
 from Scraper.HistoricalData import get_historical_data, get_stock_price, event_generator, get_cron_stock_price
+from news.news import get_news
 import logging
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime
@@ -40,63 +41,63 @@ logger = logging.getLogger("uvicorn.error")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def load_symbols_from_csv():
-    symbols = []
-    csv_file = "StockData.csv"
-    with open(csv_file, mode="r", encoding="utf-8") as file:
-        reader = csv.DictReader(file)
-        symbols = [row["symbol"] for row in reader if row.get("symbol")]
-    return symbols
+# def load_symbols_from_csv():
+#     symbols = []
+#     csv_file = "StockData.csv"
+#     with open(csv_file, mode="r", encoding="utf-8") as file:
+#         reader = csv.DictReader(file)
+#         symbols = [row["symbol"] for row in reader if row.get("symbol")]
+#     return symbols
 
-def fetch_stock_data_routine():
-    try:
-        # symbols = [
-        #     "ADVANC", "AOT", "AWC", "BANPU", "BBL", "BCP", "BDMS", "BEM", "BH", "BJC",
-        #     "BTS", "CBG", "CCET", "COM7", "CPALL", "CPF", "CPN", "CRC", "DELTA", "EGCO",
-        #     "GPSC", "GULF", "HMPRO", "IVL", "KBANK", "KKP", "KTB", "KTC", "LH", "MINT",
-        #     "MTC", "OR", "OSP", "PTT", "PTTEP", "PTTGC", "RATCH", "SCB", "SCC", "SCGP",
-        #     "TCAP", "TIDLOR", "TISCO", "TLI", "TOP", "TRUE", "TTB", "TU", "VGI", "WHA"
-        # ]
+# def fetch_stock_data_routine():
+#     try:
+#         # symbols = [
+#         #     "ADVANC", "AOT", "AWC", "BANPU", "BBL", "BCP", "BDMS", "BEM", "BH", "BJC",
+#         #     "BTS", "CBG", "CCET", "COM7", "CPALL", "CPF", "CPN", "CRC", "DELTA", "EGCO",
+#         #     "GPSC", "GULF", "HMPRO", "IVL", "KBANK", "KKP", "KTB", "KTC", "LH", "MINT",
+#         #     "MTC", "OR", "OSP", "PTT", "PTTEP", "PTTGC", "RATCH", "SCB", "SCC", "SCGP",
+#         #     "TCAP", "TIDLOR", "TISCO", "TLI", "TOP", "TRUE", "TTB", "TU", "VGI", "WHA"
+#         # ]
 
-        symbols = load_symbols_from_csv()
+#         symbols = load_symbols_from_csv()
 
-        result, failed_symbols = get_cron_stock_price(symbols, max_retries=3)
+#         result, failed_symbols = get_cron_stock_price(symbols, max_retries=5)
 
-        if failed_symbols:
-            logger.warning(f"❌ ยังมี {len(failed_symbols)} ตัวที่ดึงข้อมูลไม่สำเร็จหลัง retry: {failed_symbols}")
+#         if failed_symbols:
+#             logger.warning(f"❌ ยังมี {len(failed_symbols)} ตัวที่ดึงข้อมูลไม่สำเร็จหลัง retry: {failed_symbols}")
 
-        if not result:
-            logger.warning("No stock data fetched.")
-            return
+#         if not result:
+#             logger.warning("No stock data fetched.")
+#             return
 
-        filename = 'StockData.json'
-        filepath = os.path.join(STORAGE_FOLDER, filename)
+#         filename = 'StockData.json'
+#         filepath = os.path.join(STORAGE_FOLDER, filename)
 
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(result, f, ensure_ascii=False, indent=4)
+#         with open(filepath, "w", encoding="utf-8") as f:
+#             json.dump(result, f, ensure_ascii=False, indent=4)
 
-        logger.info(f"📊 บันทึกข้อมูลหุ้นทั้งหมด {len(result)} ตัวลงไฟล์ {filename}")
+#         logger.info(f"📊 บันทึกข้อมูลหุ้นทั้งหมด {len(result)} ตัวลงไฟล์ {filename}")
 
-    except Exception as e:
-        logger.error(f"Error in stock data routine: {e}")
+#     except Exception as e:
+#         logger.error(f"Error in stock data routine: {e}")
 
 
-# เริ่ม Scheduler เมื่อแอปเปิดใช้งาน
-@app.on_event("startup")
-def start_scheduler():
-    # 1️⃣ ดึงข้อมูลทันทีเมื่อแอปเริ่มทำงาน
-    logger.info("Fetching stock data immediately at startup...")
-    fetch_stock_data_routine()
+# # เริ่ม Scheduler เมื่อแอปเปิดใช้งาน
+# @app.on_event("startup")
+# def start_scheduler():
+#     # 1️⃣ ดึงข้อมูลทันทีเมื่อแอปเริ่มทำงาน
+#     logger.info("Fetching stock data immediately at startup...")
+#     fetch_stock_data_routine()
 
-    # 2️⃣ ค่อยเริ่ม routine ทำงานทุก 5 นาทีตามปกติ
-    scheduler.add_job(fetch_stock_data_routine, "interval", hours=4)
-    scheduler.start()
-    logger.info("Scheduler started.")
+#     # 2️⃣ ค่อยเริ่ม routine ทำงานทุก 5 นาทีตามปกติ
+#     scheduler.add_job(fetch_stock_data_routine, "interval", hours=4)
+#     scheduler.start()
+#     logger.info("Scheduler started.")
 
-@app.on_event("shutdown")
-def shutdown_scheduler():
-    scheduler.shutdown()
-    logger.info("Scheduler stopped.")
+# @app.on_event("shutdown")
+# def shutdown_scheduler():
+#     scheduler.shutdown()
+#     logger.info("Scheduler stopped.")
 
 @app.get("/")
 async def hello_world():
@@ -190,6 +191,16 @@ async def get_all_stock_data():
 async def stream_stock_price(symbols: str):
     symbol_list = symbols.split(",")
     return StreamingResponse(event_generator(symbol_list), media_type="text/event-stream")
+
+@app.get("/news/{symbol}/{stock_market}/{thai_name}/{eng_name}")
+async def get_news_endpoint(symbol: str, stock_market: str, thai_name: str, eng_name: str): #symbol, stock_market, thai_name, eng_name
+    try:
+        logger.info(f"📥 Getting news for symbol={symbol}, stock_market={stock_market}, eng_name={eng_name}, thai_name={thai_name}")
+        data = get_news(symbol, stock_market, thai_name, eng_name)
+        return data
+    except Exception as e:
+        logger.error(f"❌ Error fetching news data for {symbol}: {e}")
+        raise
 
 # จัดการ error ทั่วไปไม่ถูกจับใน route
 @app.exception_handler(HTTPException)
